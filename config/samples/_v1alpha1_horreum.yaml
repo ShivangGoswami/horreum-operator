@@ -1,6 +1,12 @@
 apiVersion: hyperfoil.io/v1alpha1
 kind: Horreum
 metadata:
-  name: horreum
+  labels:
+    app.kubernetes.io/name: horreum
+    app.kubernetes.io/instance: horreum-sample
+    app.kubernetes.io/part-of: horreum-operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: horreum-operator
+  name: horreum-sample
 spec:
   nodeHost: 127.0.0.1

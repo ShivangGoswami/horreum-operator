@@ -1,4 +1,4 @@
-package horreum
+package controller
 
 import (
 	"fmt"

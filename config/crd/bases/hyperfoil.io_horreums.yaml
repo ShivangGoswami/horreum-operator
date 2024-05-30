@@ -3,8 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.11.3
-  creationTimestamp: null
+    controller-gen.kubebuilder.io/version: v0.15.0
   name: horreums.hyperfoil.io
 spec:
   group: hyperfoil.io
@@ -41,14 +40,19 @@ spec:
           repository
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -56,15 +60,15 @@ spec:
             description: HorreumSpec defines the desired state of Horreum
             properties:
               adminSecret:
-                description: Name of secret resource with data `username` and `password`.
-                  This will be the first user that get's created in Horreum with the
-                  `admin` role, therefore it can create other users and teams. Created
-                  automatically if it does not exist.
+                description: |-
+                  Name of secret resource with data `username` and `password`. This will be the first user
+                  that get's created in Horreum with the `admin` role, therefore it can create other users and teams.
+                  Created automatically if it does not exist.
                 type: string
               database:
-                description: Database coordinates for Horreum data. Besides `username`
-                  and `password` the secret must also contain key `dbsecret` that
-                  will be used to sign access to the database.
+                description: |-
+                  Database coordinates for Horreum data. Besides `username` and `password` the secret must
+                  also contain key `dbsecret` that will be used to sign access to the database.
                 properties:
                   host:
                     description: Hostname for the database
@@ -88,9 +92,9 @@ spec:
                 description: Keycloak specification
                 properties:
                   adminSecret:
-                    description: Secret used for admin access to the deployed Keycloak
-                      instance. Created if does not exist. Must contain keys `username`
-                      and `password`.
+                    description: |-
+                      Secret used for admin access to the deployed Keycloak instance. Created if does not exist.
+                      Must contain keys `username` and `password`.
                     type: string
                   database:
                     description: Database coordinates Keycloak should use
@@ -156,9 +160,9 @@ spec:
                 description: PostgreSQL specification
                 properties:
                   adminSecret:
-                    description: Secret used for unrestricted access to the database.
-                      Created if does not exist. Must contain keys `username` and
-                      `password`.
+                    description: |-
+                      Secret used for unrestricted access to the database. Created if does not exist.
+                      Must contain keys `username` and `password`.
                     type: string
                   enabled:
                     description: True (or omitted) to deploy PostgreSQL database

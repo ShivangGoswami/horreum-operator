@@ -1,4 +1,4 @@
-package horreum
+package controller
 
 import (
 	hyperfoilv1alpha1 "github.com/Hyperfoil/horreum-operator/api/v1alpha1"

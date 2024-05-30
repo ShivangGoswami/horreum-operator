@@ -1,5 +1,5 @@
 /*
-Copyright 2021.
+Copyright 2024.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package horreum
+package controller
 
 import (
 	"context"
@@ -22,38 +22,37 @@ import (
 	"fmt"
 	"reflect"
 
+	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	hyperfoiliov1alpha1 "github.com/Hyperfoil/horreum-operator/api/v1alpha1"
 	hyperfoilv1alpha1 "github.com/Hyperfoil/horreum-operator/api/v1alpha1"
 	"github.com/google/go-cmp/cmp"
-
-	logr "github.com/go-logr/logr"
 
 	routev1 "github.com/openshift/api/route/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 )
 
 // HorreumReconciler reconciles a Horreum object
 type HorreumReconciler struct {
 	client.Client
-	Log             logr.Logger
 	Scheme          *runtime.Scheme
 	RoutesAvailable bool
 	UseRedHatImages bool
 }
 
-type compareFunc func(interface{}, interface{}, logr.Logger) bool
+type compareFunc func(interface{}, interface{}) bool
 type checkFunc func(interface{}) (bool, string, string)
 
-var nocompare = func(interface{}, interface{}, logr.Logger) bool {
+var nocompare = func(interface{}, interface{}) bool {
 	return true
 }
 var nocheck = func(interface{}) (bool, string, string) {
@@ -77,10 +76,11 @@ var nocheck = func(interface{}) (bool, string, string) {
 // the user.
 //
 // For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.9.2/pkg/reconcile
+// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
 func (r *HorreumReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
-	logger := r.Log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	logger.Info("Reconciling Horreum")
+	_ = log.FromContext(ctx)
+
+	log.Log.Info("Reconciling Horreum")
 
 	// Fetch the Horreum cr
 	cr := &hyperfoilv1alpha1.Horreum{}
@@ -107,15 +107,15 @@ func (r *HorreumReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	}
 
 	if !r.RoutesAvailable {
-		ca, caPrivateKey, err := createCA(cr, r, logger)
+		ca, caPrivateKey, err := createCA(cr, r)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		err = createServiceCert(cr, r, logger, ca, caPrivateKey, cr.GetName()+"-app-certs", cr.GetName(), 1000)
+		err = createServiceCert(cr, r, ca, caPrivateKey, cr.GetName()+"-app-certs", cr.GetName(), 1000)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		err = createServiceCert(cr, r, logger, ca, caPrivateKey, cr.GetName()+"-keycloak-certs", cr.GetName()+"-keycloak", 2000)
+		err = createServiceCert(cr, r, ca, caPrivateKey, cr.GetName()+"-keycloak-certs", cr.GetName()+"-keycloak", 2000)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
@@ -129,34 +129,34 @@ func (r *HorreumReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 				},
 			},
 		}
-		if err := ensureSame(r, cr, logger, serviceCaConfigMap, &corev1.ConfigMap{}, nocompare, nocheck); err != nil {
+		if err := ensureSame(r, cr, serviceCaConfigMap, &corev1.ConfigMap{}, nocompare, nocheck); err != nil {
 			return reconcile.Result{}, err
 		}
 	}
 
 	dbAdminSecret := newSecret(cr, dbAdminSecret(cr))
-	if err := ensureSame(r, cr, logger, dbAdminSecret, &corev1.Secret{}, nocompare,
+	if err := ensureSame(r, cr, dbAdminSecret, &corev1.Secret{}, nocompare,
 		checkSecret(corev1.BasicAuthUsernameKey, corev1.BasicAuthPasswordKey)); err != nil {
 		return reconcile.Result{}, err
 	}
 	appSecret := newSecret(cr, appUserSecret(cr))
 	appSecret.StringData["dbsecret"] = generatePassword()
-	if err := ensureSame(r, cr, logger, appSecret, &corev1.Secret{}, nocompare,
+	if err := ensureSame(r, cr, appSecret, &corev1.Secret{}, nocompare,
 		checkSecret(corev1.BasicAuthUsernameKey, corev1.BasicAuthPasswordKey, "dbsecret")); err != nil {
 		return reconcile.Result{}, err
 	}
 	keycloakAdminSecret := newSecret(cr, keycloakAdminSecret(cr))
-	if err := ensureSame(r, cr, logger, keycloakAdminSecret, &corev1.Secret{}, nocompare,
+	if err := ensureSame(r, cr, keycloakAdminSecret, &corev1.Secret{}, nocompare,
 		checkSecret(corev1.BasicAuthUsernameKey, corev1.BasicAuthPasswordKey)); err != nil {
 		return reconcile.Result{}, err
 	}
 	keycloakDbSecret := newSecret(cr, keycloakDbSecret(cr))
-	if err := ensureSame(r, cr, logger, keycloakDbSecret, &corev1.Secret{}, nocompare,
+	if err := ensureSame(r, cr, keycloakDbSecret, &corev1.Secret{}, nocompare,
 		checkSecret(corev1.BasicAuthUsernameKey, corev1.BasicAuthPasswordKey)); err != nil {
 		return reconcile.Result{}, err
 	}
 	horreumAdminSecret := newSecret(cr, horreumAdminSecret(cr))
-	if err := ensureSame(r, cr, logger, horreumAdminSecret, &corev1.Secret{}, nocompare,
+	if err := ensureSame(r, cr, horreumAdminSecret, &corev1.Secret{}, nocompare,
 		checkSecret(corev1.BasicAuthUsernameKey, corev1.BasicAuthPasswordKey)); err != nil {
 		return reconcile.Result{}, err
 	}
@@ -172,13 +172,13 @@ func (r *HorreumReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 			return reconcile.Result{}, err
 		}
 	} else {
-		if err := ensureSame(r, cr, logger, postgresConfigMap, &corev1.ConfigMap{}, compareConfigMap, nocheck); err != nil {
+		if err := ensureSame(r, cr, postgresConfigMap, &corev1.ConfigMap{}, compareConfigMap, nocheck); err != nil {
 			return reconcile.Result{}, err
 		}
-		if err := ensureSame(r, cr, logger, postgresPod, &corev1.Pod{}, comparePods, checkPod); err != nil {
+		if err := ensureSame(r, cr, postgresPod, &corev1.Pod{}, comparePods, checkPod); err != nil {
 			return reconcile.Result{}, err
 		}
-		if err := ensureSame(r, cr, logger, postgresService, &corev1.Service{}, compareService, nocheck); err != nil {
+		if err := ensureSame(r, cr, postgresService, &corev1.Service{}, compareService, nocheck); err != nil {
 			return reconcile.Result{}, err
 		}
 	}
@@ -190,35 +190,35 @@ func (r *HorreumReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	}
 	keycloakPublicUrl := cr.Spec.Keycloak.External.PublicUri
 	if keycloakPublicUrl == "" {
-		if err := ensureSame(r, cr, logger, keycloakService, &corev1.Service{}, compareService, nocheck); err != nil {
+		if err := ensureSame(r, cr, keycloakService, &corev1.Service{}, compareService, nocheck); err != nil {
 			return reconcile.Result{}, err
 		}
 		if isNodePort(r, cr.Spec.Keycloak.ServiceType) {
-			nodePort, err := getNodePort(r, keycloakService, logger)
+			nodePort, err := getNodePort(r, keycloakService)
 			if err != nil {
 				return reconcile.Result{}, err
 			} else if nodePort == 0 {
 				updateStatus(r, cr, "Pending", "Waiting for Keycloak service node port")
-				logger.Info("Waiting for Keycloak service node port to be assigned")
+				log.Log.Info("Waiting for Keycloak service node port to be assigned")
 				return reconcile.Result{Requeue: true}, nil
 			}
 			keycloakPublicUrl = fmt.Sprintf("https://%s:%d", cr.Spec.NodeHost, nodePort)
 		} else {
 			if cr.Spec.Keycloak.ServiceType == corev1.ServiceTypeLoadBalancer {
-				keycloakPublicUrl, err = getLoadBalancer(r, keycloakService, logger)
+				keycloakPublicUrl, err = getLoadBalancer(r, keycloakService)
 				if err != nil {
 					return reconcile.Result{}, err
 				}
 			} else if r.RoutesAvailable {
 				foundRoute := &routev1.Route{}
-				if err := ensureSame(r, cr, logger, keycloakRoute, foundRoute, compareRoute, checkRoute); err != nil {
+				if err := ensureSame(r, cr, keycloakRoute, foundRoute, compareRoute, checkRoute); err != nil {
 					return reconcile.Result{}, err
 				}
 				keycloakPublicUrl = getRouteUrl(foundRoute)
 			}
 			if keycloakPublicUrl == "" {
 				updateStatus(r, cr, "Pending", "Waiting for Keycloak service URL")
-				logger.Info("Waiting for Keycloak service URL to be assigned")
+				log.Log.Info("Waiting for Keycloak service URL to be assigned")
 				return reconcile.Result{Requeue: true}, nil
 			}
 		}
@@ -238,7 +238,7 @@ func (r *HorreumReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 				return reconcile.Result{}, err
 			}
 		}
-	} else if err := ensureSame(r, cr, logger, keycloakPod, &corev1.Pod{}, comparePods, checkPod); err != nil {
+	} else if err := ensureSame(r, cr, keycloakPod, &corev1.Pod{}, comparePods, checkPod); err != nil {
 		return reconcile.Result{}, err
 	}
 
@@ -247,48 +247,48 @@ func (r *HorreumReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
-	if err := ensureSame(r, cr, logger, appService, &corev1.Service{}, compareService, nocheck); err != nil {
+	if err := ensureSame(r, cr, appService, &corev1.Service{}, compareService, nocheck); err != nil {
 		return reconcile.Result{}, err
 	}
 	var appPublicUrl string
 	if isNodePort(r, cr.Spec.ServiceType) {
-		nodePort, err := getNodePort(r, appService, logger)
+		nodePort, err := getNodePort(r, appService)
 		if err != nil {
 			return reconcile.Result{}, err
 		} else if nodePort == 0 {
-			logger.Info("Waiting for app service node port to be assigned")
+			log.Log.Info("Waiting for app service node port to be assigned")
 			updateStatus(r, cr, "Pending", "Waiting for service node port")
 			return reconcile.Result{Requeue: true}, nil
 		}
 		appPublicUrl = fmt.Sprintf("https://%s:%d", cr.Spec.NodeHost, nodePort)
 	} else {
 		if cr.Spec.ServiceType == corev1.ServiceTypeLoadBalancer {
-			appPublicUrl, err = getLoadBalancer(r, appService, logger)
+			appPublicUrl, err = getLoadBalancer(r, appService)
 			if err != nil {
 				return reconcile.Result{}, err
 			}
 		} else if r.RoutesAvailable {
 			foundRoute := &routev1.Route{}
-			if err := ensureSame(r, cr, logger, appRoute, foundRoute, compareRoute, checkRoute); err != nil {
+			if err := ensureSame(r, cr, appRoute, foundRoute, compareRoute, checkRoute); err != nil {
 				return reconcile.Result{}, err
 			}
 			appPublicUrl = getRouteUrl(foundRoute)
 		}
 		if appPublicUrl == "" {
 			updateStatus(r, cr, "Pending", "Waiting for Horreum service URL")
-			logger.Info("Waiting for Horreum service URL to be assigned")
+			log.Log.Info("Waiting for Horreum service URL to be assigned")
 			return reconcile.Result{Requeue: true}, nil
 		}
 	}
 	cr.Status.PublicUrl = appPublicUrl
 
 	appPod := appPod(cr, keycloakPublicUrl, appPublicUrl)
-	if err := ensureSame(r, cr, logger, appPod, &corev1.Pod{}, comparePods, checkPod); err != nil {
+	if err := ensureSame(r, cr, appPod, &corev1.Pod{}, comparePods, checkPod); err != nil {
 		return reconcile.Result{}, err
 	}
 
 	uploadConfig := uploadConfig(cr)
-	if err := ensureSame(r, cr, logger, uploadConfig, &corev1.ConfigMap{}, nocompare, nocheck); err != nil {
+	if err := ensureSame(r, cr, uploadConfig, &corev1.ConfigMap{}, nocompare, nocheck); err != nil {
 		return reconcile.Result{}, err
 	}
 
@@ -302,7 +302,7 @@ type resource interface {
 	runtime.Object
 }
 
-func ensureSame(r *HorreumReconciler, cr *hyperfoilv1alpha1.Horreum, logger logr.Logger,
+func ensureSame(r *HorreumReconciler, cr *hyperfoilv1alpha1.Horreum,
 	object resource, out client.Object,
 	compare compareFunc, check checkFunc) error {
 	// Set Hyperfoil instance as the owner and controller
@@ -314,7 +314,7 @@ func ensureSame(r *HorreumReconciler, cr *hyperfoilv1alpha1.Horreum, logger logr
 	// Check if this Pod already exists
 	err := r.Get(context.TODO(), types.NamespacedName{Name: object.GetName(), Namespace: object.GetNamespace()}, out)
 	if err != nil && errors.IsNotFound(err) {
-		logger.Info("Creating a new "+kind, kind+".Namespace", object.GetNamespace(), kind+".Name", object.GetName())
+		log.Log.Info("Creating a new "+kind, kind+".Namespace", object.GetNamespace(), kind+".Name", object.GetName())
 		err = r.Create(context.TODO(), object)
 		if err != nil {
 			updateStatus(r, cr, "Error", "Cannot create "+kind+" "+object.GetName())
@@ -324,19 +324,19 @@ func ensureSame(r *HorreumReconciler, cr *hyperfoilv1alpha1.Horreum, logger logr
 	} else if err != nil {
 		updateStatus(r, cr, "Error", "Cannot find "+kind+" "+object.GetName())
 		return err
-	} else if compare(object, out, logger) {
-		logger.Info(kind + " " + object.GetName() + " already exists and matches.")
+	} else if compare(object, out) {
+		log.Log.Info(kind + " " + object.GetName() + " already exists and matches.")
 		if ok, status, reason := check(out); !ok {
 			setStatus(r, cr, status, kind+" "+object.GetName()+" "+reason)
 		}
 	} else {
-		logger.Info(kind + " " + object.GetName() + " already exists but does not match. Deleting existing object.")
+		log.Log.Info(kind + " " + object.GetName() + " already exists but does not match. Deleting existing object.")
 		if err = r.Delete(context.TODO(), out); err != nil {
-			logger.Error(err, "Cannot delete "+kind+" "+object.GetName())
+			log.Log.Error(err, "Cannot delete "+kind+" "+object.GetName())
 			updateStatus(r, cr, "Error", "Cannot delete "+kind+" "+object.GetName())
 			return err
 		}
-		logger.Info("Creating a new " + kind)
+		log.Log.Info("Creating a new " + kind)
 		if err = r.Create(context.TODO(), object); err != nil {
 			updateStatus(r, cr, "Error", "Cannot create "+kind+" "+object.GetName())
 			return err
@@ -367,8 +367,8 @@ func isNodePort(r *HorreumReconciler, serviceType corev1.ServiceType) bool {
 	return serviceType == corev1.ServiceTypeNodePort || serviceType == "" && !r.RoutesAvailable
 }
 
-func getNodePort(r *HorreumReconciler, service *corev1.Service, logger logr.Logger) (int32, error) {
-	svc, err := getService(r, service, logger)
+func getNodePort(r *HorreumReconciler, service *corev1.Service) (int32, error) {
+	svc, err := getService(r, service)
 	if err == nil {
 		return svc.Spec.Ports[0].NodePort, nil
 	} else {
@@ -376,8 +376,8 @@ func getNodePort(r *HorreumReconciler, service *corev1.Service, logger logr.Logg
 	}
 }
 
-func getLoadBalancer(r *HorreumReconciler, service *corev1.Service, logger logr.Logger) (string, error) {
-	svc, err := getService(r, service, logger)
+func getLoadBalancer(r *HorreumReconciler, service *corev1.Service) (string, error) {
+	svc, err := getService(r, service)
 	if err != nil {
 		ingress := svc.Status.LoadBalancer.Ingress
 		if len(ingress) == 0 {
@@ -402,11 +402,11 @@ func getLoadBalancer(r *HorreumReconciler, service *corev1.Service, logger logr.
 	}
 }
 
-func getService(r *HorreumReconciler, service *corev1.Service, logger logr.Logger) (*corev1.Service, error) {
+func getService(r *HorreumReconciler, service *corev1.Service) (*corev1.Service, error) {
 	var foundService = &corev1.Service{}
 	err := r.Get(context.TODO(), types.NamespacedName{Namespace: service.Namespace, Name: service.Name}, foundService)
 	if err != nil {
-		logger.Error(err, "Cannot fetch current state of service "+service.Name)
+		log.Log.Error(err, "Cannot fetch current state of service "+service.Name)
 		return nil, err
 	}
 	return foundService, nil
@@ -439,11 +439,11 @@ func updateStatus(r *HorreumReconciler, instance *hyperfoilv1alpha1.Horreum, sta
 	r.Status().Update(context.TODO(), instance)
 }
 
-func comparePods(i1 interface{}, i2 interface{}, logger logr.Logger) bool {
+func comparePods(i1 interface{}, i2 interface{}) bool {
 	p1, ok1 := i1.(*corev1.Pod)
 	p2, ok2 := i2.(*corev1.Pod)
 	if !ok1 || !ok2 {
-		logger.Info("Cannot cast to Pods: " + fmt.Sprintf("%v | %v", i1, i2))
+		log.Log.Info("Cannot cast to Pods: " + fmt.Sprintf("%v | %v", i1, i2))
 		return false
 	}
 
@@ -452,7 +452,7 @@ func comparePods(i1 interface{}, i2 interface{}, logger logr.Logger) bool {
 	}
 
 	diff := cmp.Diff(p1.Spec, p2.Spec)
-	logger.Info("Pod " + p1.GetName() + " diff (-want,+got):\n" + diff)
+	log.Log.Info("Pod " + p1.GetName() + " diff (-want,+got):\n" + diff)
 	return false
 }
 
@@ -518,36 +518,36 @@ func checkPod(i interface{}) (bool, string, string) {
 	return false, "Pending", " is not ready"
 }
 
-func compareService(i1, i2 interface{}, logger logr.Logger) bool {
+func compareService(i1, i2 interface{}) bool {
 	s1, ok1 := i1.(*corev1.Service)
 	s2, ok2 := i2.(*corev1.Service)
 	if !ok1 || !ok2 {
-		logger.Info("Cannot cast to Services: " + fmt.Sprintf("%v | %v", i1, i2))
+		log.Log.Info("Cannot cast to Services: " + fmt.Sprintf("%v | %v", i1, i2))
 		return false
 	}
 	if s1.Spec.Type != s2.Spec.Type {
-		logger.Info("Type of services does not match: " + fmt.Sprintf("%v | %v", s1, s2))
+		log.Log.Info("Type of services does not match: " + fmt.Sprintf("%v | %v", s1, s2))
 		return false
 	}
 	if len(s1.Spec.Ports) != len(s2.Spec.Ports) {
-		logger.Info("Number of ports does not match: " + fmt.Sprintf("%v | %v", s1, s2))
+		log.Log.Info("Number of ports does not match: " + fmt.Sprintf("%v | %v", s1, s2))
 		return false
 	}
 	for i, p1 := range s1.Spec.Ports {
 		p2 := s2.Spec.Ports[i]
 		if p1.Port != p2.Port {
-			logger.Info("Ports don't match: " + fmt.Sprintf("%v | %v", s1, s2))
+			log.Log.Info("Ports don't match: " + fmt.Sprintf("%v | %v", s1, s2))
 			return false
 		}
 	}
 	return true
 }
 
-func compareRoute(i1, i2 interface{}, logger logr.Logger) bool {
+func compareRoute(i1, i2 interface{}) bool {
 	r1, ok1 := i1.(*routev1.Route)
 	r2, ok2 := i2.(*routev1.Route)
 	if !ok1 || !ok2 {
-		logger.Info("Cannot cast to Routes: " + fmt.Sprintf("%v | %v", i1, i2))
+		log.Log.Info("Cannot cast to Routes: " + fmt.Sprintf("%v | %v", i1, i2))
 		return false
 	}
 	if r1.Spec.Host == "" {
@@ -557,7 +557,7 @@ func compareRoute(i1, i2 interface{}, logger logr.Logger) bool {
 		return false
 	}
 	if !reflect.DeepEqual(r1.Spec.TLS, r2.Spec.TLS) {
-		logger.Info("TLS configuration does not match: " + fmt.Sprintf("%v | %v", r1.Spec.TLS, r2.Spec.TLS))
+		log.Log.Info("TLS configuration does not match: " + fmt.Sprintf("%v | %v", r1.Spec.TLS, r2.Spec.TLS))
 		return false
 	}
 	return true
@@ -581,20 +581,20 @@ func checkRoute(i interface{}) (bool, string, string) {
 	return false, "Pending", " is in unknown state"
 }
 
-func compareConfigMap(i1, i2 interface{}, logger logr.Logger) bool {
+func compareConfigMap(i1, i2 interface{}) bool {
 	cm1, ok1 := i1.(*corev1.ConfigMap)
 	cm2, ok2 := i2.(*corev1.ConfigMap)
 	if !ok1 || !ok2 {
-		logger.Info("Cannot cast to ConfigMaps: " + fmt.Sprintf("%v | %v", i1, i2))
+		log.Log.Info("Cannot cast to ConfigMaps: " + fmt.Sprintf("%v | %v", i1, i2))
 		return false
 	}
 	if len(cm1.Data) != len(cm2.Data) {
-		logger.Info("Different sizes: " + fmt.Sprintf("%d | %d", len(cm1.Data), len(cm2.Data)))
+		log.Log.Info("Different sizes: " + fmt.Sprintf("%d | %d", len(cm1.Data), len(cm2.Data)))
 		return false
 	}
 	for key, val1 := range cm1.Data {
 		if val2, ok := cm2.Data[key]; !ok || val1 != val2 {
-			logger.Info("Key " + key + " differs: " + val1 + " | " + val2)
+			log.Log.Info("Key " + key + " differs: " + val1 + " | " + val2)
 			return false
 		}
 	}
@@ -604,7 +604,7 @@ func compareConfigMap(i1, i2 interface{}, logger logr.Logger) bool {
 // SetupWithManager sets up the controller with the Manager.
 func (r *HorreumReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	controller := ctrl.NewControllerManagedBy(mgr).
-		For(&hyperfoilv1alpha1.Horreum{}).
+		For(&hyperfoiliov1alpha1.Horreum{}).
 		Owns(&corev1.Pod{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.Secret{}).

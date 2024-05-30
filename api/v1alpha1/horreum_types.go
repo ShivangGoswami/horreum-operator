@@ -1,5 +1,5 @@
 /*
-Copyright 2021.
+Copyright 2024.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // DatabaseSpec defines access info for a database
 type DatabaseSpec struct {
@@ -120,10 +123,10 @@ type HorreumStatus struct {
 	KeycloakUrl string `json:"keycloakUrl,omitempty"`
 }
 
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+//+kubebuilder:object:root=true
+//+kubebuilder:subresource:status
 
 // Horreum is the object configuring Horreum performance results repository
-// +kubebuilder:subresource:status
 // +kubebuilder:resource:path=horreums,scope=Namespaced
 // +kubebuilder:categories=all,hyperfoil
 // +kubebuilder:resource:shortName=hrm
@@ -139,7 +142,7 @@ type Horreum struct {
 	Status HorreumStatus `json:"status,omitempty"`
 }
 
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+//+kubebuilder:object:root=true
 
 // HorreumList contains a list of Horreum
 type HorreumList struct {

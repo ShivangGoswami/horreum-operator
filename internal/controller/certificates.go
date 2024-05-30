@@ -1,4 +1,4 @@
-package horreum
+package controller
 
 import (
 	"bytes"
@@ -14,22 +14,22 @@ import (
 	"time"
 
 	hyperfoilv1alpha1 "github.com/Hyperfoil/horreum-operator/api/v1alpha1"
-	logr "github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func createCA(cr *hyperfoilv1alpha1.Horreum, r *HorreumReconciler, logger logr.Logger) (ca *x509.Certificate, caPrivKey *rsa.PrivateKey, err error) {
+func createCA(cr *hyperfoilv1alpha1.Horreum, r *HorreumReconciler) (ca *x509.Certificate, caPrivKey *rsa.PrivateKey, err error) {
 	caSecret := &corev1.Secret{}
 	err = r.Get(context.TODO(), types.NamespacedName{Name: cr.Name + "-ca-certs", Namespace: cr.Namespace}, caSecret)
 	var caPEMBytes []byte
 	if err != nil && errors.IsNotFound(err) {
 		caPrivKey, err = rsa.GenerateKey(rand.Reader, 4096)
 		if err != nil {
-			logger.Error(err, "Cannot generate CA private key")
+			log.Log.Error(err, "Cannot generate CA private key")
 			return
 		}
 		caSecret.ObjectMeta = metav1.ObjectMeta{
@@ -63,7 +63,7 @@ func createCA(cr *hyperfoilv1alpha1.Horreum, r *HorreumReconciler, logger logr.L
 		var caBytes []byte
 		caBytes, err = x509.CreateCertificate(rand.Reader, ca, ca, &caPrivKey.PublicKey, caPrivKey)
 		if err != nil {
-			logger.Error(err, "Cannot generate CA certificate")
+			log.Log.Error(err, "Cannot generate CA certificate")
 			return
 		}
 		caPEM := new(bytes.Buffer)
@@ -82,13 +82,13 @@ func createCA(cr *hyperfoilv1alpha1.Horreum, r *HorreumReconciler, logger logr.L
 			return
 		}
 
-		logger.Info("Creating a new CA secret " + caSecret.GetName())
+		log.Log.Info("Creating a new CA secret " + caSecret.GetName())
 		if err = r.Create(context.TODO(), caSecret); err != nil {
 			updateStatus(r, cr, "Error", "Cannot create CA private key secret")
 			return
 		}
 	} else if err != nil {
-		logger.Error(err, "Cannot fetch current CA certificates")
+		log.Log.Error(err, "Cannot fetch current CA certificates")
 		return
 	} else {
 		caPEMBytes = caSecret.Data[corev1.TLSCertKey]
@@ -99,7 +99,7 @@ func createCA(cr *hyperfoilv1alpha1.Horreum, r *HorreumReconciler, logger logr.L
 		}
 		ca, err = x509.ParseCertificate(caBlock.Bytes)
 		if err != nil {
-			logger.Error(err, "Cannot parse existing CA certificate")
+			log.Log.Error(err, "Cannot parse existing CA certificate")
 			return
 		}
 		caPrivKeyPEM := caSecret.Data[corev1.TLSPrivateKeyKey]
@@ -110,7 +110,7 @@ func createCA(cr *hyperfoilv1alpha1.Horreum, r *HorreumReconciler, logger logr.L
 		}
 		caPrivKey, err = x509.ParsePKCS1PrivateKey(caPrivKeyBlock.Bytes)
 		if err != nil {
-			logger.Error(err, "Cannot parse existing CA private key")
+			log.Log.Error(err, "Cannot parse existing CA private key")
 			return
 		}
 	}
@@ -128,22 +128,22 @@ func createCA(cr *hyperfoilv1alpha1.Horreum, r *HorreumReconciler, logger logr.L
 		if err = controllerutil.SetControllerReference(cr, serviceCaConfigMap, r.Scheme); err != nil {
 			return
 		}
-		logger.Info("Creating config map service-ca.crt with CA certificate")
+		log.Log.Info("Creating config map service-ca.crt with CA certificate")
 		err = r.Create(context.TODO(), serviceCaConfigMap)
 		if err != nil {
-			logger.Error(err, "Cannot create/update config map with CA")
+			log.Log.Error(err, "Cannot create/update config map with CA")
 			return
 		}
 	} else if err != nil {
-		logger.Error(err, "Cannot fetch current CA config map")
+		log.Log.Error(err, "Cannot fetch current CA config map")
 		return
 	} else {
-		logger.Info("CA config map is present, not doing anything")
+		log.Log.Info("CA config map is present, not doing anything")
 	}
 	return
 }
 
-func createServiceCert(cr *hyperfoilv1alpha1.Horreum, r *HorreumReconciler, logger logr.Logger,
+func createServiceCert(cr *hyperfoilv1alpha1.Horreum, r *HorreumReconciler,
 	ca *x509.Certificate, caPrivKey *rsa.PrivateKey,
 	resourceName string, serviceName string, serial int64) error {
 	if ca == nil || caPrivKey == nil {
@@ -180,13 +180,13 @@ func createServiceCert(cr *hyperfoilv1alpha1.Horreum, r *HorreumReconciler, logg
 
 		certPrivKey, err := rsa.GenerateKey(rand.Reader, 4096)
 		if err != nil {
-			logger.Error(err, "Cannot generate private key")
+			log.Log.Error(err, "Cannot generate private key")
 			return err
 		}
 
 		certBytes, err := x509.CreateCertificate(rand.Reader, cert, ca, &certPrivKey.PublicKey, caPrivKey)
 		if err != nil {
-			logger.Error(err, "Cannot generate a certificate")
+			log.Log.Error(err, "Cannot generate a certificate")
 			return err
 		}
 
@@ -215,14 +215,14 @@ func createServiceCert(cr *hyperfoilv1alpha1.Horreum, r *HorreumReconciler, logg
 			return err
 		}
 
-		logger.Info("Creating new certificate " + certSecret.Name)
+		log.Log.Info("Creating new certificate " + certSecret.Name)
 		err = r.Create(context.TODO(), certSecret)
 		if err != nil {
-			logger.Error(err, "Cannot create secret with service certificate")
+			log.Log.Error(err, "Cannot create secret with service certificate")
 		}
 		return err
 	} else if err == nil {
-		logger.Info("Certificate " + resourceName + " is present, not doing anything")
+		log.Log.Info("Certificate " + resourceName + " is present, not doing anything")
 		return nil
 	} else {
 		return err
