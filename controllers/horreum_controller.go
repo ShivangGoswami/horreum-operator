@@ -106,15 +106,16 @@ func (r *HorreumReconciler) Reconcile(ctx context.Context, request ctrl.Request)
 		cr.Status.LastUpdate = metav1.Now()
 	}
 
+	//create app-certs regardless of any condition since it is needed both in k8s and openshift
+	ca, caPrivateKey, err := createCA(cr, r, logger)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	err = createServiceCert(cr, r, logger, ca, caPrivateKey, cr.GetName()+"-app-certs", cr.GetName(), 1000)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
 	if !r.RoutesAvailable {
-		ca, caPrivateKey, err := createCA(cr, r, logger)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
-		err = createServiceCert(cr, r, logger, ca, caPrivateKey, cr.GetName()+"-app-certs", cr.GetName(), 1000)
-		if err != nil {
-			return reconcile.Result{}, err
-		}
 		err = createServiceCert(cr, r, logger, ca, caPrivateKey, cr.GetName()+"-keycloak-certs", cr.GetName()+"-keycloak", 2000)
 		if err != nil {
 			return reconcile.Result{}, err
